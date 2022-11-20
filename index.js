@@ -40,7 +40,22 @@ const run = async () => {
 
         const appointmentOptionsCollection = client.db('DoctorPortal').collection('appointmentOptions');
         const bookingsCollections = client.db('DoctorPortal').collection('bookings');
-        const usersCollections = client.db('DoctorPortal').collection('users')
+        const usersCollections = client.db('DoctorPortal').collection('users');
+        const doctorsCollections = client.db('DoctorPortal').collection('doctors')
+
+
+        // verifyAdmin...........................
+        const verifyAdmin = async (req, res, next) => {
+            const decodedEmail = req.decoded.email;
+            const query = { email: decodedEmail }
+            const user = await usersCollections.findOne(query);
+
+            if (user?.role !== 'admin') {
+                return res.status(403).send({ message: 'Forbidden Access' })
+            }
+            next()
+        }
+
 
         app.get('/appointmentOptions', async (req, res) => {
             const date = req.query.date;
@@ -57,6 +72,12 @@ const run = async () => {
                 option.slots = remainingSlots;
             })
             res.send(options);
+        })
+
+        app.get('/appointmentSpecialty', async (req, res) => {
+            const query = {}
+            const result = await appointmentOptionsCollection.find().project({ name: 1 }).toArray()
+            res.send(result)
         })
 
         app.post('/bookings', async (req, res) => {
@@ -90,13 +111,35 @@ const run = async () => {
             res.send(resutl);
         })
 
+        app.get('/booking/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = {
+                _id: ObjectId(id)
+            }
+            const result = await bookingsCollections.findOne(query);
+            res.send(result)
+        })
+
+
+        // Delete Bookings......................................
+        app.delete('/bookings/:id', verifyJwt, async (req, res) => {
+            const id = req.params.id;
+            const query = {
+                _id: ObjectId(id)
+            }
+            const result = await bookingsCollections.deleteOne(query);
+            res.send(result);
+
+        })
+
+
         // get jwt tocken to the client site for imedieat signin user.....................
         app.get('/jwt', async (req, res) => {
             const email = req.query.email;
             const query = { email: email }
             const user = await usersCollections.findOne(query);
             if (user) {
-                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, { expiresIn: '1h' });
+                const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, { expiresIn: '1d' });
                 return res.send({ accessToken: token })
             }
             res.status(403).send({ accessToken: '' });
@@ -121,16 +164,7 @@ const run = async () => {
             res.send({ isAdmin: user?.role === 'admin' });
         })
 
-        app.put('/users/admin/:id', verifyJwt, async (req, res) => {
-
-            const decodedEmail = req.decoded.email;
-            const query = { email: decodedEmail }
-            const user = await usersCollections.findOne(query);
-
-            if (user?.role !== 'admin') {
-                return res.status(403).send({ message: 'Forbidden Access' })
-            }
-
+        app.put('/users/admin/:id', verifyJwt, verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const filter = { _id: ObjectId(id) }
             const option = { upsert: true }
@@ -141,8 +175,41 @@ const run = async () => {
             }
             const result = await usersCollections.updateOne(filter, updatedDoc, option)
             res.send(result)
+        })
+
+        // // update all data at a time.................................
+        // app.get('/addprice', async (req, res) => {
+        //     const filter = {};
+        //     const option = { upsert: true };
+        //     const updatedDoc = {
+        //         $set: {
+        //             price: 700
+        //         }
+        //     }
+        //     const result = await appointmentOptionsCollection.updateMany(filter, updatedDoc, option);
+        //     res.send(result)
+        // })
 
 
+        app.get('/doctors', verifyJwt, verifyAdmin, async (req, res) => {
+            const query = {}
+            const doctors = await doctorsCollections.find(query).toArray();
+            res.send(doctors)
+        })
+
+
+        app.post('/doctors', verifyJwt, verifyAdmin, async (req, res) => {
+            const doctor = req.body;
+            const result = await doctorsCollections.insertOne(doctor);
+            res.send(result);
+        })
+
+        app.delete('/doctors/:id', verifyJwt, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            console.log(id);
+            const filter = { _id: ObjectId(id) }
+            const result = await doctorsCollections.deleteOne(filter);
+            res.send(result)
         })
 
 

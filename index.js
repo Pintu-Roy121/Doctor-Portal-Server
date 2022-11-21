@@ -4,6 +4,10 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+const stripe = require("stripe")(process.env.STRIPe_SECRET_KEY);
+
+
+
 const port = process.env.PORT || 5000;
 
 const app = express();
@@ -42,6 +46,7 @@ const run = async () => {
         const bookingsCollections = client.db('DoctorPortal').collection('bookings');
         const usersCollections = client.db('DoctorPortal').collection('users');
         const doctorsCollections = client.db('DoctorPortal').collection('doctors')
+        const paymentsCollections = client.db('DoctorPortal').collection('payments')
 
 
         // verifyAdmin...........................
@@ -55,6 +60,25 @@ const run = async () => {
             }
             next()
         }
+
+
+        // payment intention................................
+        app.post('/create-payment-intent', async (req, res) => {
+            const booking = req.body;
+            const price = booking.price;
+            const amount = price * 100;
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                currency: 'usd',
+                amount: amount,
+                "payment_method_types": [
+                    "card"
+                ],
+            })
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        })
 
 
         app.get('/appointmentOptions', async (req, res) => {
@@ -76,7 +100,7 @@ const run = async () => {
 
         app.get('/appointmentSpecialty', async (req, res) => {
             const query = {}
-            const result = await appointmentOptionsCollection.find().project({ name: 1 }).toArray()
+            const result = await appointmentOptionsCollection.find(query).project({ name: 1 }).toArray()
             res.send(result)
         })
 
@@ -109,7 +133,7 @@ const run = async () => {
             }
             const resutl = await bookingsCollections.find(query).toArray();
             res.send(resutl);
-        })
+        });
 
         app.get('/booking/:id', async (req, res) => {
             const id = req.params.id;
@@ -117,6 +141,22 @@ const run = async () => {
                 _id: ObjectId(id)
             }
             const result = await bookingsCollections.findOne(query);
+            res.send(result)
+        });
+
+        // Insert payments documents........................
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            const result = await paymentsCollections.insertOne(payment);
+            const id = payment.bookingId;
+            const filter = { _id: ObjectId(id) };
+            const updateDoc = {
+                $set: {
+                    paid: true,
+                    transectionId: payment.transectionId
+                }
+            }
+            const updatedResult = await bookingsCollections.updateOne(filter, updateDoc)
             res.send(result)
         })
 
@@ -130,7 +170,7 @@ const run = async () => {
             const result = await bookingsCollections.deleteOne(query);
             res.send(result);
 
-        })
+        });
 
 
         // get jwt tocken to the client site for imedieat signin user.....................
@@ -176,6 +216,7 @@ const run = async () => {
             const result = await usersCollections.updateOne(filter, updatedDoc, option)
             res.send(result)
         })
+
 
         // // update all data at a time.................................
         // app.get('/addprice', async (req, res) => {

@@ -38,7 +38,6 @@ const verifyJwt = (req, res, next) => {
         next()
     })
 }
-
 const run = async () => {
     try {
 
